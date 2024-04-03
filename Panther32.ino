@@ -14,6 +14,10 @@ const char* host_pswd = "ExecuteOrder66";
 
 const bool ishost = true;
 
+// ping to WS
+const int ping = 1000;
+long mping;
+
 using namespace websockets;
 
 WebsocketsClient ws;
@@ -22,25 +26,21 @@ void onMessageCallback(WebsocketsMessage message) {
     Serial.println(message.data());
 }
 
+/*
 void onEventsCallback(WebsocketsEvent event, String data) {
     if(event == WebsocketsEvent::ConnectionOpened) {
-        Serial.println("Connection established with PantherII WebSocket server !");
+        //Serial.println("Connection established with PantherII WebSocket server !");
     } else if(event == WebsocketsEvent::ConnectionClosed) {
-        Serial.println("Connection lost with PantherII Websocket server...");
-    } else if(event == WebsocketsEvent::GotPing) {
-        Serial.println("Got a Ping!");
-    } else if(event == WebsocketsEvent::GotPong) {
-        Serial.println("Got a Pong!");
+        //Serial.println("Connection lost with PantherII Websocket server...");
     }
-}
+}*/
 
 void startCameraServer();
 void setupLedFlash(int pin);
 
 void setup() {
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
+  Serial.begin(9600);
+  //Serial.setDebugOutput(true);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -130,58 +130,72 @@ void setup() {
 
   if(ishost) {
     WiFi.softAP(host_ssid,host_pswd);
-    Serial.print("Hosting Panther32 WiFi connection on address: ");
-    Serial.println(WiFi.softAPIP());
+    /*Serial.print("Hosting Panther32 WiFi connection on address: ");
+    Serial.println(WiFi.softAPIP());*/
 
     startCameraServer();
-
+    /*
     Serial.print("Camera Ready! Use 'http://");
     Serial.print(WiFi.softAPIP());
-    Serial.println("' to connect");
+    Serial.println("' to connect");*/
   } else {
-    Serial.println("Panther32 starting with non-host WiFi connection.");
+    //Serial.println("Panther32 starting with non-host WiFi connection.");
     WiFi.begin(ssid,pswd);
 
     while(WiFi.status() != WL_CONNECTED) {
       delay(500);
-      Serial.print(".");
+      //Serial.print(".");
     }
-
+    /*
     Serial.println("");
     Serial.println("WiFi connected !");
     Serial.print("Address : ");
-    Serial.println(WiFi.localIP());
+    Serial.println(WiFi.localIP());*/
 
     startCameraServer();
-
+    /*
     Serial.print("Camera Ready! Use 'http://");
     Serial.print(WiFi.localIP());
-    Serial.println("' to connect");
+    Serial.println("' to connect");*/
   }
 
-  Serial.println("Connecting to PantherII WebSocket Server...");
+  //Serial.println("Connecting to PantherII WebSocket Server...");
 
   // Setup Callbacks  
   ws.onMessage(onMessageCallback);
-  ws.onEvent(onEventsCallback);
+  //ws.onEvent(onEventsCallback);
   
   // Connect to server
   bool connected = ws.connect(wsserver);
 }
 
 void loop() {
+  if(!ws.available()) {
+    ws.connect(wsserver);
+    delay(500);
+    return;
+  }
+  // TEST FUNCTION, TO BE DELETED
   if(ws.available()) {
+    if(Serial.available() > 0) {
+      String data = Serial.readStringUntil('\n');
+
+      ws.send(data);
+    }
+
+    if(millis() - mping > ping) {
+      ws.send("ping");
+      mping = millis();
+    }
+
     ws.send("PS_FRONT="+String(random(0,200)));
     ws.send("PS_RIGHT="+String(random(0,200)));
     ws.send("PS_LEFT="+String(random(0,200)));
 
-    Serial.println("Message sent.");
+    //Serial.println("Message sent.");
 
     ws.poll();
-  } else {
-    Serial.println("Panther32 trying to reconnect to PantherII WebSocket server...");
-    ws.connect(wsserver);
-    delay(500);
   }
-  delay(1000);
+
+  delay(250);
 }
