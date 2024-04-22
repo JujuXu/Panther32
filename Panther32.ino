@@ -188,14 +188,8 @@ void loop() {
       mping = millis();
     }
 
-    ws.send("PS_FRONT="+String(random(0,200)));
-    ws.send("PS_RIGHT="+String(random(0,200)));
-    ws.send("PS_LEFT="+String(random(0,200)));
-
     //Serial.println("Message sent.");
 
     ws.poll();
   }
-
-  delay(250);
 }
