@@ -1,47 +1,81 @@
+// This code has been created on the example code from ArduinoIDE "CameraWebServer".
+
+// import libraries and external files
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <ArduinoWebsockets.h>
 
+// define camera pins
 #define CAMERA_MODEL_WROVER_KIT
+// import camera pins
 #include "camera_pins.h"
 
+// set up constants for WiFi connection and websocket server address
+// ssid & pswd to connect to an external WiFi
 const char* ssid = "THORGAL";
 const char* pswd = "57xwkppgkr";
-const char* wsserver = "ws://192.168.4.2:80";
 
+// host_ssid & host_pswd for the hosted wifi
 const char* host_ssid = "PANTHER";
 const char* host_pswd = "ExecuteOrder66";
+const char* wsserver = "ws://192.168.4.2:80";
+//const char* wsserver = "ws://192.168.1.160:80";
 
+// choose whether the ESP32 is a WiFi host or not
 const bool ishost = true;
 
-// ping to WS
+// delay in ms for sending a ping message to the websocket server. It ensures a JavaApp-side connection reset for the websocket
+// if ping isn't received by the JavaAPP, it resets connection
 const int ping = 1000;
-long mping;
+// same for sending messages
+const int msg = 250;
 
+// time in ms for sending ping message and for sending data received by the ATMEGA328P-PU chip
+// these variables are for saving millis()
+long mping, mdata;
+
+// using websocket library
 using namespace websockets;
 
+// define websocket object
 WebsocketsClient ws;
 
+// websocket event
+// if a message is received by the websocket server, it is sent to the ATMEGA328P-PU chip with serial communication (rx/tx)
 void onMessageCallback(WebsocketsMessage message) {
     Serial.println(message.data());
 }
 
-/*
-void onEventsCallback(WebsocketsEvent event, String data) {
-    if(event == WebsocketsEvent::ConnectionOpened) {
-        //Serial.println("Connection established with PantherII WebSocket server !");
-    } else if(event == WebsocketsEvent::ConnectionClosed) {
-        //Serial.println("Connection lost with PantherII Websocket server...");
-    }
-}*/
-
+// function to start camera web server
 void startCameraServer();
 void setupLedFlash(int pin);
 
 void setup() {
+  // starting serial comm
   Serial.begin(9600);
-  //Serial.setDebugOutput(true);
 
+  // check if the ESP32 has to host a WiFi connection or to connect to an external one
+  if(ishost) {
+    WiFi.softAP(host_ssid,host_pswd); // create an access point
+  } else {
+    WiFi.begin(ssid,pswd); // connect to a wifi connection
+
+    while(WiFi.status() != WL_CONNECTED) {
+      delay(500);
+    }
+
+    /*Serial.println("");
+    Serial.print("Address : ");
+    Serial.println(WiFi.localIP());*/
+  }
+
+  // Setup Callbacks  
+  ws.onMessage(onMessageCallback);
+  
+  // Connect to server
+  bool connected = ws.connect(wsserver);
+
+  // camera settings settup
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -64,17 +98,14 @@ void setup() {
   config.xclk_freq_hz = 20000000;
   config.frame_size = FRAMESIZE_UXGA;
   config.pixel_format = PIXFORMAT_JPEG; // for streaming
-  //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
   config.jpeg_quality = 12;
   config.fb_count = 1;
-  
-  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-  //                      for larger pre-allocated frame buffer.
+
   if(config.pixel_format == PIXFORMAT_JPEG){
     if(psramFound()){
-      config.jpeg_quality = 10;
+      config.jpeg_quality = 20;
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
@@ -85,15 +116,10 @@ void setup() {
   } else {
     // Best option for face detection/recognition
     config.frame_size = FRAMESIZE_240X240;
-#if CONFIG_IDF_TARGET_ESP32S3
-    config.fb_count = 2;
-#endif
+    #if CONFIG_IDF_TARGET_ESP32S3
+        config.fb_count = 2;
+    #endif
   }
-
-#if defined(CAMERA_MODEL_ESP_EYE)
-  pinMode(13, INPUT_PULLUP);
-  pinMode(14, INPUT_PULLUP);
-#endif
 
   // camera init
   esp_err_t err = esp_camera_init(&config);
@@ -111,85 +137,47 @@ void setup() {
   }
   // drop down frame size for higher initial frame rate
   if(config.pixel_format == PIXFORMAT_JPEG){
-    s->set_framesize(s, FRAMESIZE_QVGA);
+    s->set_framesize(s, FRAMESIZE_HD);
   }
 
-#if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
-  s->set_vflip(s, 1);
-  s->set_hmirror(s, 1);
-#endif
-
-#if defined(CAMERA_MODEL_ESP32S3_EYE)
-  s->set_vflip(s, 1);
-#endif
-
-// Setup LED FLash if LED pin is defined in camera_pins.h
-#if defined(LED_GPIO_NUM)
-  setupLedFlash(LED_GPIO_NUM);
-#endif
-
-  if(ishost) {
-    WiFi.softAP(host_ssid,host_pswd);
-    /*Serial.print("Hosting Panther32 WiFi connection on address: ");
-    Serial.println(WiFi.softAPIP());*/
-
-    startCameraServer();
-    /*
-    Serial.print("Camera Ready! Use 'http://");
-    Serial.print(WiFi.softAPIP());
-    Serial.println("' to connect");*/
-  } else {
-    //Serial.println("Panther32 starting with non-host WiFi connection.");
-    WiFi.begin(ssid,pswd);
-
-    while(WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      //Serial.print(".");
-    }
-    /*
-    Serial.println("");
-    Serial.println("WiFi connected !");
-    Serial.print("Address : ");
-    Serial.println(WiFi.localIP());*/
-
-    startCameraServer();
-    /*
-    Serial.print("Camera Ready! Use 'http://");
-    Serial.print(WiFi.localIP());
-    Serial.println("' to connect");*/
-  }
-
-  //Serial.println("Connecting to PantherII WebSocket Server...");
-
-  // Setup Callbacks  
-  ws.onMessage(onMessageCallback);
-  //ws.onEvent(onEventsCallback);
-  
-  // Connect to server
-  bool connected = ws.connect(wsserver);
+  startCameraServer();
 }
 
-void loop() {
-  if(!ws.available()) {
-    ws.connect(wsserver);
-    delay(500);
-    return;
-  }
-  // TEST FUNCTION, TO BE DELETED
+void loop() {  
+  // check if websocket server is available
   if(ws.available()) {
-    if(Serial.available() > 0) {
-      String data = Serial.readStringUntil('\n');
+    // check if bytes are available on the serial comm
+    // and if it's time to send data
+    if(Serial.available() > 0  && millis()-mdata >= msg) {
+      mdata = millis(); // overwrite last millis
+      String data = Serial.readStringUntil('\n'); // read last string on serial comm
 
-      ws.send(data);
+      ws.send(data); // send string received to the websocket server
     }
 
+    // check if it's time to send a ping message
     if(millis() - mping > ping) {
-      ws.send("ping");
-      mping = millis();
+      ws.send("ping"); // send "ping" message
+      mping = millis(); // overwrite last millis
+
+      /*ws.send("PS_FRONT="+String(random(0,50)));
+      ws.send("PS_LEFT="+String(random(0,50)));
+      ws.send("PS_RIGHT="+String(random(0,50)));
+
+      ws.send("ACC_X="+String(random(0,50)));
+      ws.send("ACC_Y="+String(random(0,50)));
+      ws.send("ACC_Z="+String(random(0,50)));
+
+      ws.send("CURR_A="+String(random(0,50)));
+      ws.send("CURR_B="+String(random(0,50)));*/
     }
 
-    //Serial.println("Message sent.");
+    ws.poll(); // poll the websocket connection
+  } else {
+    
+    ws.connect(wsserver); // try to reconnect to websocket server
+    delay(500); // wait time
+    return;
 
-    ws.poll();
   }
 }
