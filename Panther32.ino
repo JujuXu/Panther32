@@ -12,8 +12,8 @@
 
 // set up constants for WiFi connection and websocket server address
 // ssid & pswd to connect to an external WiFi
-const char* ssid = "THORGAL";
-const char* pswd = "57xwkppgkr";
+const char* ssid = "WIFI_SSID";
+const char* pswd = "PASSWORD";
 
 // host_ssid & host_pswd for the hosted wifi
 const char* host_ssid = "PANTHER";
